@@ -7,7 +7,7 @@ A facial expression and meme detection system that uses deep learning to classif
 - **Emotion detection** — Classifies faces into 7 emotions: Angry, Disgust, Fear, Happy, Sad, Surprise, Neutral
 - **Face detection** — Uses OpenCV Haar Cascade for face localisation
 - **Hand gesture detection** — MediaPipe for hand landmark detection
-- **Pre-trained model** — Emotion classification via ONNX (`emotion_model.onnx`), converted from Keras `emotion_model.hdf5`
+- **Pre-trained model** — Emotion classification via ONNX (`emotion_model.onnx`)
 
 ## Requirements
 
@@ -76,41 +76,23 @@ deactivate
 
 ## Usage
 
-### Run the app (recommended)
+Run the webcam app:
 
-1. **One-time: create ONNX emotion model** (if `emotion_model.onnx` is missing):
-   ```bash
-   pip install -r requirements-convert.txt
-   python export_emotion_to_onnx.py
-   ```
-   This converts `emotion_model.hdf5` → `emotion_model.onnx`. You can then use the main app without TensorFlow.
+```bash
+python main.py
+```
 
-2. **Run the webcam app:**
-   ```bash
-   pip install -r requirements.txt
-   python main.py
-   ```
-   Press **q** to quit.
-
-### Optional: run the notebook
-
-1. Open `FT2_Prototype.ipynb` in Jupyter.
-2. Select the `.venv311` kernel (install with `pip install ipykernel` and `python -m ipykernel install --user --name=venv311 --display-name="Python 3.11 (.venv311)"` if needed).
-3. Run the cells. The notebook still uses Keras; for the app we use ONNX to avoid dependency conflicts.
+Press **q** to quit.
 
 ## Project structure
 
 ```
 expression-meme-detector/
-├── main.py                    # Webcam app (ONNX emotion model)
+├── main.py                    # Webcam app
 ├── hand_gesture_classifier.py # Hand gesture logic
-├── export_emotion_to_onnx.py # One-time: Keras → ONNX
-├── emotion_model.hdf5        # Pre-trained Keras model (source)
-├── emotion_model.onnx        # ONNX model (create via export_emotion_to_onnx.py)
+├── emotion_model.onnx        # Pre-trained emotion model (ONNX)
 ├── monkey_memes/             # Meme images
-├── requirements.txt          # App deps (opencv, mediapipe, onnxruntime)
-├── requirements-convert.txt  # One-time conversion deps (tensorflow, tf2onnx)
-├── FT2_Prototype.ipynb       # Original notebook (optional)
+├── requirements.txt          # Dependencies (opencv, mediapipe, onnxruntime)
 └── README.md
 ```
 
@@ -121,14 +103,6 @@ expression-meme-detector/
 - Grant **Full Disk Access** to Terminal/Cursor in **System Settings → Privacy & Security**
 - Or remove quarantine: `xattr -rd com.apple.quarantine .venv311`
 
-### Jupyter kernel not found
-
-```bash
-source .venv311/bin/activate
-pip install ipykernel
-python -m ipykernel install --user --name=venv311 --display-name="Python 3.11 (.venv311)"
-```
-
 ### Dependency conflicts
 
-The app uses **ONNX Runtime** (not TensorFlow) for emotion inference, so you avoid TensorFlow/MediaPipe/protobuf conflicts. Install with `pip install -r requirements.txt`. Only the one-time conversion script (`export_emotion_to_onnx.py`) needs TensorFlow; use `requirements-convert.txt` for that.
+The app uses **ONNX Runtime** for emotion inference. Install with `pip install -r requirements.txt`.

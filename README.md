@@ -76,7 +76,16 @@ deactivate
 
 ## Usage
 
-Run the webcam app:
+### Web app (recommended)
+
+```bash
+pip install -r requirements.txt
+python app.py
+```
+
+Open **http://127.0.0.1:5001** in your browser. Allow camera access to see the webcam, emotion probability bars, and meme result.
+
+### CLI webcam app
 
 ```bash
 python main.py
@@ -88,11 +97,14 @@ Press **q** to quit.
 
 ```
 expression-meme-detector/
-├── main.py                    # Webcam app
+├── app.py                     # Web app (Flask)
+├── static/
+│   └── index.html             # Web UI (webcam, emotion bars, meme)
+├── main.py                    # CLI webcam app
 ├── hand_gesture_classifier.py # Hand gesture logic
-├── emotion_model.onnx        # Pre-trained emotion model (ONNX)
+├── emotion_model.onnx        # Pre-trained emotion model (or in models/)
 ├── monkey_memes/             # Meme images
-├── requirements.txt          # Dependencies (opencv, mediapipe, onnxruntime)
+├── requirements.txt          # Dependencies (opencv, mediapipe, onnxruntime, flask)
 └── README.md
 ```
 

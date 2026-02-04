@@ -1,0 +1,7 @@
+# One-time conversion: Keras .hdf5 → ONNX
+# Run: pip install -r requirements-convert.txt
+# Then: python export_emotion_to_onnx.py
+
+tensorflow>=2.15,<2.16
+tf2onnx
+onnx

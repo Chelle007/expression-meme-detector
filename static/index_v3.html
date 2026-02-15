@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Expression Meme Detector</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Space Grotesk', sans-serif; }
+    .bar-fill { transition: width 0.15s ease-out; }
+    video.mirror { transform: scaleX(-1); }
+  </style>
+</head>
+<body class="min-h-screen bg-slate-900 text-slate-100">
+  <div class="max-w-4xl mx-auto px-4 py-6">
+    <h1 class="text-2xl font-bold text-center mb-6 text-amber-400">
+      Expression Meme Detector
+    </h1>
+
+    <!-- Webcam -->
+    <section class="mb-6">
+      <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">Webcam</h2>
+      <div id="webcam-container" class="relative rounded-xl overflow-hidden bg-slate-800 aspect-video max-h-80 flex items-center justify-center">
+        <video id="video" autoplay playsinline muted class="w-full h-full object-cover mirror"></video>
+        <canvas id="overlay" class="absolute inset-0 w-full h-full object-cover mirror pointer-events-none" style="object-fit: cover;"></canvas>
+        <canvas id="canvas" class="hidden"></canvas>
+        <p id="webcam-status" class="absolute text-slate-400 text-sm">Starting camera…</p>
+      </div>
+      <p id="gesture-badge" class="mt-2 text-sm font-medium text-amber-400">Gesture: —</p>
+      <p class="text-xs text-slate-500 mt-1">Allow camera access to see your face and gestures.</p>
+    </section>
+
+    <div class="grid md:grid-cols-2 gap-6">
+      <!-- Emotion probabilities -->
+      <section class="bg-slate-800/60 rounded-xl p-4 border border-slate-700">
+        <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Emotion probabilities</h2>
+        <div id="emotion-bars" class="space-y-2">
+          <!-- Filled by JS -->
+          <template id="emotion-row">
+            <div class="flex items-center gap-2">
+              <span class="emotion-label w-24 text-sm text-slate-300"></span>
+              <div class="flex-1 h-5 bg-slate-700 rounded overflow-hidden">
+                <div class="bar-fill h-full bg-amber-500 rounded" style="width: 0%"></div>
+              </div>
+              <span class="emotion-pct w-10 text-right text-xs text-slate-400">0%</span>
+            </div>
+          </template>
+        </div>
+        <p id="gesture-display" class="mt-3 text-sm text-slate-400">Detected gesture: <span id="gesture-value" class="text-amber-400 font-medium">—</span></p>
+      </section>
+
+      <!-- Meme -->
+      <section class="bg-slate-800/60 rounded-xl p-4 border border-slate-700">
+        <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Meme</h2>
+        <p id="meme-label" class="text-amber-400 font-semibold mb-2">—</p>
+        <div class="aspect-square max-h-64 rounded-lg overflow-hidden bg-slate-700 flex items-center justify-center">
+          <img id="meme-img" src="" alt="Meme" class="w-full h-full object-contain hidden">
+          <span id="meme-placeholder" class="text-slate-500 text-sm">No match yet</span>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const overlay = document.getElementById('overlay');
+    const ctx = canvas.getContext('2d');
+    const overlayCtx = overlay.getContext('2d');
+    const webcamStatus = document.getElementById('webcam-status');
+    const emotionBars = document.getElementById('emotion-bars');
+    const gestureDisplay = document.getElementById('gesture-display');
+    const gestureValue = document.getElementById('gesture-value');
+    const gestureBadge = document.getElementById('gesture-badge');
+    const memeLabel = document.getElementById('meme-label');
+    const memeImg = document.getElementById('meme-img');
+    const memePlaceholder = document.getElementById('meme-placeholder');
+
+    const EMOTION_ORDER = ['Angry', 'Disgust', 'Fear', 'Happy', 'Sad', 'Surprise', 'Neutral'];
+    const template = document.getElementById('emotion-row');
+
+    // Build emotion bar rows once
+    EMOTION_ORDER.forEach(label => {
+      const row = template.content.cloneNode(true);
+      row.querySelector('.emotion-label').textContent = label;
+      emotionBars.appendChild(row);
+    });
+
+    function drawOverlay(faceBbox, handLandmarks, handConnections, frameW, frameH) {
+      overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+      const scaleX = frameW && frameH ? overlay.width / frameW : 1;
+      const scaleY = frameW && frameH ? overlay.height / frameH : 1;
+      const sx = (x) => x * scaleX;
+      const sy = (y) => y * scaleY;
+      // Face box (green)
+      if (faceBbox) {
+        overlayCtx.strokeStyle = '#22c55e';
+        overlayCtx.lineWidth = 3;
+        overlayCtx.strokeRect(sx(faceBbox.x), sy(faceBbox.y), sx(faceBbox.w), sy(faceBbox.h));
+      }
+      // Hand landmarks: connections then dots (like main.py draw_landmarks)
+      const connections = handConnections || [];
+      (handLandmarks || []).forEach(hand => {
+        overlayCtx.strokeStyle = '#f59e0b';
+        overlayCtx.lineWidth = 2;
+        connections.forEach(([i, j]) => {
+          const a = hand[i];
+          const b = hand[j];
+          if (a && b) {
+            overlayCtx.beginPath();
+            overlayCtx.moveTo(sx(a.x), sy(a.y));
+            overlayCtx.lineTo(sx(b.x), sy(b.y));
+            overlayCtx.stroke();
+          }
+        });
+        overlayCtx.fillStyle = '#f59e0b';
+        hand.forEach(({ x, y }) => {
+          overlayCtx.beginPath();
+          overlayCtx.arc(sx(x), sy(y), 4, 0, Math.PI * 2);
+          overlayCtx.fill();
+        });
+      });
+    }
+
+    function resizeOverlay() {
+      if (video.videoWidth === 0) return;
+      overlay.width = canvas.width;
+      overlay.height = canvas.height;
+      overlay.style.width = video.clientWidth + 'px';
+      overlay.style.height = video.clientHeight + 'px';
+    }
+
+    function updateUI(data) {
+      const probs = data.emotion_probs || {};
+      const rows = emotionBars.querySelectorAll('.flex.items-center.gap-2');
+      EMOTION_ORDER.forEach((label, i) => {
+        const pct = (probs[label] ?? 0) * 100;
+        const row = rows[i];
+        if (row) {
+          row.querySelector('.bar-fill').style.width = pct + '%';
+          row.querySelector('.emotion-pct').textContent = pct.toFixed(0) + '%';
+        }
+      });
+      const gesture = data.gesture === 'none' ? '—' : data.gesture;
+      gestureValue.textContent = gesture;
+      gestureBadge.textContent = 'Gesture: ' + gesture;
+      memeLabel.textContent = data.meme_label || '—';
+      drawOverlay(
+        data.face_bbox || null,
+        data.hand_landmarks || [],
+        data.hand_connections || [],
+        data.frame_width,
+        data.frame_height
+      );
+      if (data.meme_image_base64) {
+        memeImg.src = 'data:image/png;base64,' + data.meme_image_base64;
+        memeImg.classList.remove('hidden');
+        memePlaceholder.classList.add('hidden');
+      } else {
+        memeImg.classList.add('hidden');
+        memePlaceholder.classList.remove('hidden');
+      }
+    }
+
+    const SEND_WIDTH = 640;
+    let stream = null;
+    let inFlight = false;
+
+    async function startWebcam() {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+        video.srcObject = stream;
+        await video.play();
+        webcamStatus.textContent = '';
+        const w = video.videoWidth;
+        const h = video.videoHeight;
+        canvas.width = w;
+        canvas.height = h;
+        resizeOverlay();
+        window.addEventListener('resize', resizeOverlay);
+        captureAndPredict();
+      } catch (e) {
+        webcamStatus.textContent = 'Camera error: ' + (e.message || 'denied');
+      }
+    }
+
+    function captureAndPredict() {
+      if (video.readyState !== video.HAVE_ENOUGH_DATA || !stream || inFlight) return;
+      inFlight = true;
+      const w = video.videoWidth;
+      const h = video.videoHeight;
+      const sendW = Math.min(w, SEND_WIDTH);
+      const sendH = Math.round((sendW / w) * h);
+      ctx.save();
+      ctx.translate(w, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(video, 0, 0, w, h);
+      ctx.restore();
+      let targetCanvas = canvas;
+      if (sendW !== w || sendH !== h) {
+        const sendCanvas = document.createElement('canvas');
+        sendCanvas.width = sendW;
+        sendCanvas.height = sendH;
+        const sctx = sendCanvas.getContext('2d');
+        sctx.drawImage(canvas, 0, 0, w, h, 0, 0, sendW, sendH);
+        targetCanvas = sendCanvas;
+      }
+      targetCanvas.toBlob((blob) => {
+        const form = new FormData();
+        form.append('image', blob, 'frame.jpg');
+        fetch('/predict', { method: 'POST', body: form })
+          .then((r) => r.ok ? r.json() : null)
+          .then((data) => {
+            if (data) updateUI(data);
+          })
+          .catch(() => {})
+          .finally(() => {
+            inFlight = false;
+            requestAnimationFrame(captureAndPredict);
+          });
+      }, 'image/jpeg', 0.82);
+    }
+
+    startWebcam();
+
+    window.addEventListener('beforeunload', () => {
+      if (stream) stream.getTracks().forEach(t => t.stop());
+    });
+  </script>
+</body>
+</html>

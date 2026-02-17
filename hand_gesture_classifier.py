@@ -1,6 +1,6 @@
 """
 Hand gesture classification using MediaPipe hand landmarks.
-Detects: pointing_up, finger_to_mouth, hands_together, hands_on_head, grab, none.
+Detects: pointing_up, finger_to_mouth, hands_together, hands_on_head, none.
 """
 
 import numpy as np
@@ -38,7 +38,7 @@ def check_gesture(results, face_bbox, frame_shape):
     """
     Detect gesture from MediaPipe hand results.
 
-    Returns: 'pointing_up' | 'finger_to_mouth' | 'hands_together' | 'hands_on_head' | 'grab' | 'none'
+    Returns: 'pointing_up' | 'finger_to_mouth' | 'hands_together' | 'hands_on_head' | 'none'
 
     Strict mapping:
     1. 1 hand, index up + happy → monkey1
@@ -46,8 +46,7 @@ def check_gesture(results, face_bbox, frame_shape):
     3. 2 hands together + happy → monkey3
     4. 2 hands together + surprised → monkey4
     5. neutral (no other match) → monkey5
-    6. 1 hand half-open (grab) → monkey6
-    7. 2 hands on head + angry/fear/disgust/surprise → monkey7
+    6. 2 hands on head + angry/fear/disgust/surprise → monkey6
     """
     H, W = frame_shape[:2]
     hands = results.multi_hand_landmarks if results and results.multi_hand_landmarks else []
@@ -66,11 +65,18 @@ def check_gesture(results, face_bbox, frame_shape):
         dist = np.sqrt((wx1 - wx2) ** 2 + (wy1 - wy2) ** 2)
         together = dist < 0.25 * min(W, H)
 
+        # Hands on head: both wrists above face (or in upper part of frame if no face)
         if face_bbox is not None:
             x, y, w, h = face_bbox
             face_top = y
-            # Both wrists above face top → hands on head
-            if wy1 < face_top and wy2 < face_top:
+            # Allow wrists slightly below face top (bbox jitter / different head sizes)
+            margin = 0.15 * h
+            if wy1 < face_top + margin and wy2 < face_top + margin:
+                return "hands_on_head"
+        else:
+            # Fallback when face not detected: both wrists in upper ~40% of frame
+            upper_threshold = 0.4 * H
+            if wy1 < upper_threshold and wy2 < upper_threshold:
                 return "hands_on_head"
         if together:
             return "hands_together"
@@ -93,9 +99,5 @@ def check_gesture(results, face_bbox, frame_shape):
     # Index pointing up only
     if index_only:
         return "pointing_up"
-
-    # Grab: half open (exactly 2 fingers extended)
-    if fingers_up == 2:
-        return "grab"
 
     return "none"

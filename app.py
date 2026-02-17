@@ -90,8 +90,7 @@ memes = {
     "scheming": load_meme_image("monkey3.jpeg"),
     "shocked": load_meme_image("monkey4.jpeg"),
     "unimpressed": load_meme_image("monkey5.jpeg"),
-    "calling": load_meme_image("monkey6.jpeg"),
-    "stressed": load_meme_image("monkey7.jpeg"),
+    "stressed": load_meme_image("monkey6.jpeg"),
 }
 
 
@@ -107,8 +106,6 @@ def get_meme_result(emotion_name, gesture, memes_dict):
         return memes_dict["pointing"], "Pointing Monkey!"
     if gesture == "finger_to_mouth" and e == "neutral":
         return memes_dict["thinking"], "Thinking Monkey..."
-    if gesture == "grab":
-        return memes_dict["calling"], "Calling Monkey!"
     if e == "neutral":
         return memes_dict["unimpressed"], "Unimpressed Monkey."
     return None, "No Meme Match"

@@ -438,6 +438,30 @@
     .delay-1 { animation-delay: 0.1s; }
     .delay-2 { animation-delay: 0.2s; }
     .delay-3 { animation-delay: 0.3s; }
+
+    /* Model selector */
+    #model-select {
+      width: 100%;
+      padding: 10px 14px;
+      font-family: 'Anybody', sans-serif;
+      font-size: 0.85rem;
+      color: var(--text-primary);
+      background: rgba(26, 61, 34, 0.6);
+      border: 1px solid var(--jungle-mid);
+      border-radius: 10px;
+      cursor: pointer;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238aab7e' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      padding-right: 36px;
+    }
+    #model-select:hover { border-color: var(--jungle-light); }
+    #model-select:focus {
+      outline: none;
+      border-color: var(--vine-gold);
+      box-shadow: 0 0 0 2px rgba(232, 200, 69, 0.2);
+    }
   </style>
 </head>
 <body>
@@ -640,6 +664,12 @@
         </div>
         <div class="gesture-badge" id="gesture-badge">🤚 Gesture: —</div>
         <p class="hint-text">Allow camera access to see your face and gestures.</p>
+        <div class="section-label" style="margin-top: 16px;">Emotion model</div>
+        <div class="panel compact" style="display: inline-block; min-width: 280px; margin-top: 8px;">
+          <select id="model-select" aria-label="Choose emotion model">
+            <option value="">Loading…</option>
+          </select>
+        </div>
       </section>
 
       <!-- Right column: Meme + Emotions stacked -->
@@ -691,6 +721,7 @@
     const memeLabel = document.getElementById('meme-label');
     const memeImg = document.getElementById('meme-img');
     const memePlaceholder = document.getElementById('meme-placeholder');
+    const modelSelect = document.getElementById('model-select');
 
     const EMOTION_ORDER = ['Angry', 'Disgust', 'Fear', 'Happy', 'Sad', 'Surprise', 'Neutral'];
     const EMOTION_CLASSES = ['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral'];
@@ -791,6 +822,36 @@
     let stream = null;
     let inFlight = false;
 
+    function getSelectedModel() {
+      const v = modelSelect && modelSelect.value;
+      return (v && v.trim()) ? v.trim() : null;
+    }
+
+    async function loadModels() {
+      try {
+        const r = await fetch('/api/models');
+        const data = await r.json();
+        const models = data.models || [];
+        const defaultModel = data.default;
+        modelSelect.innerHTML = '';
+        if (models.length === 0) {
+          modelSelect.innerHTML = '<option value="">No models found</option>';
+          return;
+        }
+        models.forEach((name) => {
+          const opt = document.createElement('option');
+          opt.value = name;
+          opt.textContent = name;
+          if (name === defaultModel) opt.selected = true;
+          modelSelect.appendChild(opt);
+        });
+      } catch (e) {
+        modelSelect.innerHTML = '<option value="">Failed to load models</option>';
+      }
+    }
+
+    loadModels();
+
     async function startWebcam() {
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
@@ -830,6 +891,8 @@
       targetCanvas.toBlob((blob) => {
         const form = new FormData();
         form.append('image', blob, 'frame.jpg');
+        const model = getSelectedModel();
+        if (model) form.append('model', model);
         fetch('/predict', { method: 'POST', body: form })
           .then((r) => r.ok ? r.json() : null)
           .then((data) => {

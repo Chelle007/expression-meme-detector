@@ -699,9 +699,6 @@
             </div>
           </template>
           <div id="emotion-bars"></div>
-          <div class="gesture-line">
-            Detected gesture: <span id="gesture-value" class="value">—</span>
-          </div>
         </section>
       </div>
     </div>
@@ -797,7 +794,7 @@
         }
       });
       const gesture = data.gesture === 'none' ? '—' : data.gesture;
-      gestureValue.textContent = gesture;
+      if (gestureValue) gestureValue.textContent = gesture;
       const emotion = data.emotion || '—';
       gestureBadge.textContent = '🤚 Gesture: ' + gesture + '  |  😊 Emotion: ' + emotion;
       memeLabel.textContent = data.meme_label || '—';

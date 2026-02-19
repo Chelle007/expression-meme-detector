@@ -237,13 +237,13 @@ def _square_face_crop(img, x, y, w, h, pad_value=0):
     return canvas
 
 
-def process_frame(frame_bgr, model_filename=None):
+def process_frame(frame_rgb, model_filename=None):
     """Run face + emotion + hand + meme pipeline. Returns dict for JSON.
-    model_filename: optional .onnx filename from FER_models/models; uses default if omitted.
+    frame_rgb: image in RGB (e.g. from decode + BGR2RGB). model_filename: optional .onnx filename.
     """
-    gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-    rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-    H, W = frame_bgr.shape[:2]
+    gray = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2GRAY)
+    rgb = frame_rgb
+    H, W = frame_rgb.shape[:2]
 
     faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(30, 30))
     current_emotion = "Neutral"
@@ -260,33 +260,33 @@ def process_frame(frame_bgr, model_filename=None):
         emotion_session, emotion_input_name, input_spec = _get_emotion_session(_default_model)
 
     if len(faces) > 0:
-        (x, y, w, h) = sorted(faces, key=lambda f: f[2] * f[3], reverse=True)[0]
-        face_bbox = (x, y, w, h)
+        (fx, fy, fw, fh) = sorted(faces, key=lambda f: f[2] * f[3], reverse=True)[0]
+        face_bbox = (fx, fy, fw, fh)
         if emotion_session and emotion_input_name and input_spec:
             try:
                 current_model = model_filename if model_filename else _default_model
                 use_legacy_emotion_model = (current_model == "emotion_model.onnx")
-                ch, h, w = input_spec["channels"], input_spec["height"], input_spec["width"]
+                ch = input_spec["channels"]
+                model_h, model_w = input_spec["height"], input_spec["width"]
                 layout = input_spec["layout"]
                 if use_legacy_emotion_model:
                     # emotion_model.onnx: original preprocessing — direct face rect, 64x64 grayscale, no square crop
-                    roi = gray[y : y + h, x : x + w]
+                    roi = gray[fy : fy + fh, fx : fx + fw]
                     roi = cv2.resize(roi, (64, 64))
                     roi = roi.astype(np.float32) / 255.0
                     roi = np.expand_dims(roi, axis=(0, -1))  # (1, 64, 64, 1)
                 elif ch == 3:
-                    # FER RGB: square crop (match ipynb Resize(224,224) without stretching), ImageNet normalize, NCHW
-                    roi = _square_face_crop(frame_bgr, x, y, w, h)
-                    roi = cv2.cvtColor(roi, cv2.COLOR_BGR2RGB)
-                    roi = cv2.resize(roi, (w, h))
+                    # FER RGB: square face crop then resize to model size (224,224), ImageNet normalize, NCHW
+                    roi = _square_face_crop(frame_rgb, fx, fy, fw, fh)
+                    roi = cv2.resize(roi, (model_w, model_h))
                     roi = roi.astype(np.float32) / 255.0
                     roi = (roi - IMAGENET_MEAN) / IMAGENET_STD
                     roi = np.transpose(roi, (2, 0, 1))  # HWC -> CHW
                     roi = np.expand_dims(roi, axis=0).astype(np.float32)  # (1, 3, H, W)
                 else:
-                    # Other grayscale models: square crop then resize
-                    roi = _square_face_crop(gray, x, y, w, h)
-                    roi = cv2.resize(roi, (w, h))
+                    # Other grayscale models: square crop then resize to model size
+                    roi = _square_face_crop(gray, fx, fy, fw, fh)
+                    roi = cv2.resize(roi, (model_w, model_h))
                     roi = roi.astype(np.float32) / 255.0
                     if layout == "nchw":
                         roi = np.expand_dims(roi, axis=(0, 1))  # (1, 1, H, W)
@@ -313,7 +313,7 @@ def process_frame(frame_bgr, model_filename=None):
                 pass
 
     results = hands_detector.process(rgb)
-    gesture = check_gesture(results, face_bbox, frame_bgr.shape)
+    gesture = check_gesture(results, face_bbox, frame_rgb.shape)
     meme_img, meme_label = get_meme_result(current_emotion, gesture, memes)
 
     # Hand landmarks in pixel coords (same as main.py draw_landmarks)
@@ -401,6 +401,8 @@ def predict():
         img = cv2.imdecode(buf, cv2.IMREAD_COLOR)
         if img is None:
             return jsonify({"error": "Invalid image"}), 400
+        # Match training: PIL/ImageFolder use RGB; OpenCV decodes as BGR — convert so model sees correct colors
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         result = process_frame(img, model_filename=model_name)
         return jsonify(result)
     except Exception as e:

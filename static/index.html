@@ -662,8 +662,7 @@
           <canvas id="canvas" style="display:none;"></canvas>
           <div id="webcam-status" class="webcam-status">Starting camera…</div>
         </div>
-        <div class="gesture-badge" id="gesture-badge">🤚 Gesture: —</div>
-        <p class="hint-text">Allow camera access to see your face and gestures.</p>
+        <div class="gesture-badge" id="gesture-badge">🤚 Gesture: —  |  😊 Emotion: —</div>
         <div class="section-label" style="margin-top: 16px;">Emotion model</div>
         <div class="panel compact" style="display: inline-block; min-width: 280px; margin-top: 8px;">
           <select id="model-select" aria-label="Choose emotion model">
@@ -799,7 +798,8 @@
       });
       const gesture = data.gesture === 'none' ? '—' : data.gesture;
       gestureValue.textContent = gesture;
-      gestureBadge.textContent = '🤚 Gesture: ' + gesture;
+      const emotion = data.emotion || '—';
+      gestureBadge.textContent = '🤚 Gesture: ' + gesture + '  |  😊 Emotion: ' + emotion;
       memeLabel.textContent = data.meme_label || '—';
       drawOverlay(
         data.face_bbox || null,

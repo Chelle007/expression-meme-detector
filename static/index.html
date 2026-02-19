@@ -340,12 +340,12 @@
       min-width: 0;
     }
     /* Each emotion gets a unique gradient */
-    .bar-fill.angry    { background: linear-gradient(90deg, #b33a3a, #e05555); }
-    .bar-fill.disgust  { background: linear-gradient(90deg, #6b8a3a, #95b84e); }
-    .bar-fill.fear     { background: linear-gradient(90deg, #6a4fa0, #9b78d0); }
-    .bar-fill.happy    { background: linear-gradient(90deg, #c4a32f, #e8c845); }
-    .bar-fill.sad      { background: linear-gradient(90deg, #3a6b8a, #5aa0c4); }
     .bar-fill.surprise { background: linear-gradient(90deg, #c7396a, #e86a92); }
+    .bar-fill.fear     { background: linear-gradient(90deg, #6a4fa0, #9b78d0); }
+    .bar-fill.disgust  { background: linear-gradient(90deg, #6b8a3a, #95b84e); }
+    .bar-fill.happiness { background: linear-gradient(90deg, #c4a32f, #e8c845); }
+    .bar-fill.sadness  { background: linear-gradient(90deg, #3a6b8a, #5aa0c4); }
+    .bar-fill.anger    { background: linear-gradient(90deg, #b33a3a, #e05555); }
     .bar-fill.neutral  { background: linear-gradient(90deg, #4a7a5a, #7eb89a); }
 
     .bar-fill::after {
@@ -722,8 +722,8 @@
     const memePlaceholder = document.getElementById('meme-placeholder');
     const modelSelect = document.getElementById('model-select');
 
-    const EMOTION_ORDER = ['Angry', 'Disgust', 'Fear', 'Happy', 'Sad', 'Surprise', 'Neutral'];
-    const EMOTION_CLASSES = ['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral'];
+    const EMOTION_ORDER = ['Surprise', 'Fear', 'Disgust', 'Happiness', 'Sadness', 'Anger', 'Neutral'];
+    const EMOTION_CLASSES = ['surprise', 'fear', 'disgust', 'happiness', 'sadness', 'anger', 'neutral'];
     const template = document.getElementById('emotion-row');
 
     // Build emotion bar rows once (index_old style: template clone, with index.html classes for styling)

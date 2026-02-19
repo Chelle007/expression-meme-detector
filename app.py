@@ -10,7 +10,7 @@ import cv2
 import numpy as np
 import mediapipe as mp
 import onnxruntime as ort
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, make_response
 from hand_gesture_classifier import check_gesture
 
 app = Flask(__name__, static_folder="static", static_url_path="")
@@ -19,10 +19,24 @@ app = Flask(__name__, static_folder="static", static_url_path="")
 # Load models & assets
 # ---------------------------------------------------------------------------
 
-# Legacy 64x64 grayscale model (e.g. emotion_model.onnx) output order
-EMOTION_LABELS = ["Angry", "Disgust", "Fear", "Happy", "Sad", "Surprise", "Neutral"]
-# FER notebook models (224x224 RGB) output order: Surprise, Fear, Disgust, Happiness, Sadness, Anger, Neutral
-FER_EMOTION_LABELS = ["Surprise", "Fear", "Disgust", "Happy", "Sad", "Angry", "Neutral"]
+# Canonical emotion order used by API and frontend (same as ipynb EMOTION_LABELS)
+EMOTION_LABELS = ["Surprise", "Fear", "Disgust", "Happiness", "Sadness", "Anger", "Neutral"]
+# Legacy 64x64 grayscale model (emotion_model.onnx) output order — map to EMOTION_LABELS when used
+LEGACY_EMOTION_ORDER = ["Angry", "Disgust", "Fear", "Happy", "Sad", "Surprise", "Neutral"]
+# FER notebooks use ImageFolder; .classes is alphabetical: Anger, Disgust, Fear, Happiness, Neutral, Sadness, Surprise
+# So model output index i maps to canonical index FER_IMAGEFOLDER_TO_CANONICAL[i]
+FER_IMAGEFOLDER_ORDER = ["Anger", "Disgust", "Fear", "Happiness", "Neutral", "Sadness", "Surprise"]
+FER_IMAGEFOLDER_TO_CANONICAL = (5, 2, 1, 3, 6, 4, 0)  # model idx -> EMOTION_LABELS index
+# Models that were trained with ImageFolder (alphabetical .classes) — use the mapping above
+FER_MODELS_IMAGEFOLDER_ORDER = frozenset({
+    "fer_efficientnet_b0_combined.onnx",
+    "fer_efficientnet_b0.onnx",
+    "fer_resnet18.onnx",
+    "fer_resnet18_no_mixup_cutmix.onnx",
+    "fer_resnet18_max_mixup_cutmix.onnx",
+    "fer_mobilenetv2.onnx",
+    "fer_custom_cnn.onnx",
+})
 
 # Emotion models from FER_models/models (lazy-loaded by filename)
 FER_MODELS_DIR = os.path.join("FER_models", "models")
@@ -183,13 +197,13 @@ memes = {
 
 def get_meme_result(emotion_name, gesture, memes_dict):
     e = emotion_name.lower()
-    if gesture == "hands_on_head" and e in ["angry", "fear", "disgust", "surprise"]:
+    if gesture == "hands_on_head" and e in ["anger", "angry", "fear", "disgust", "surprise"]:
         return memes_dict["stressed"], "Stressed Monkey!"
-    if gesture == "hands_together" and e == "happy":
+    if gesture == "hands_together" and e in ["happiness", "happy"]:
         return memes_dict["scheming"], "Scheming Monkey!"
     if gesture == "hands_together" and e == "surprise":
         return memes_dict["shocked"], "Shocked Monkey!"
-    if gesture == "pointing_up" and e == "happy":
+    if gesture == "pointing_up" and e in ["happiness", "happy"]:
         return memes_dict["pointing"], "Pointing Monkey!"
     if gesture == "finger_to_mouth" and e == "neutral":
         return memes_dict["thinking"], "Thinking Monkey..."
@@ -236,6 +250,8 @@ def process_frame(frame_bgr, model_filename=None):
     face_bbox = None
     emotion_probs = {label: 0.0 for label in EMOTION_LABELS}
     emotion_probs["Neutral"] = 1.0
+    # Legacy model index -> canonical EMOTION_LABELS index (Surprise, Fear, Disgust, Happiness, Sadness, Anger, Neutral)
+    legacy_to_canonical = (5, 2, 1, 4, 3, 0, 6)  # Surprise, Fear, Disgust, Happiness, Sadness, Anger, Neutral
 
     emotion_session, emotion_input_name, input_spec = (None, None, None)
     if model_filename:
@@ -280,10 +296,19 @@ def process_frame(frame_bgr, model_filename=None):
                     None, {emotion_input_name: roi}
                 )[0][0]
                 probs = softmax(logits)
-                # FER models use order Surprise, Fear, Disgust, Happiness, Sadness, Anger, Neutral
-                labels = FER_EMOTION_LABELS if ch == 3 else EMOTION_LABELS
-                current_emotion = labels[int(np.argmax(probs))]
-                emotion_probs = {labels[i]: float(probs[i]) for i in range(len(labels))}
+                if use_legacy_emotion_model:
+                    # Legacy model outputs LEGACY_EMOTION_ORDER; map to canonical EMOTION_LABELS
+                    emotion_probs = {EMOTION_LABELS[legacy_to_canonical[i]]: float(probs[i]) for i in range(len(probs))}
+                    current_emotion = EMOTION_LABELS[legacy_to_canonical[int(np.argmax(probs))]]
+                elif current_model in FER_MODELS_IMAGEFOLDER_ORDER:
+                    # FER models trained with ImageFolder: output order is alphabetical (Anger, Disgust, Fear, Happiness, Neutral, Sadness, Surprise)
+                    # Map to canonical order to match ipynb EMOTION_LABELS
+                    emotion_probs = {EMOTION_LABELS[FER_IMAGEFOLDER_TO_CANONICAL[i]]: float(probs[i]) for i in range(len(probs))}
+                    current_emotion = EMOTION_LABELS[FER_IMAGEFOLDER_TO_CANONICAL[int(np.argmax(probs))]]
+                else:
+                    # FER models that output in canonical order (Surprise, Fear, Disgust, Happiness, Sadness, Anger, Neutral)
+                    current_emotion = EMOTION_LABELS[int(np.argmax(probs))]
+                    emotion_probs = {EMOTION_LABELS[i]: float(probs[i]) for i in range(len(probs))}
             except Exception:
                 pass
 
@@ -326,7 +351,10 @@ def process_frame(frame_bgr, model_filename=None):
 
 @app.route("/")
 def index():
-    return send_from_directory("static", "index.html")
+    resp = make_response(send_from_directory("static", "index.html"))
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
 
 
 @app.route("/favicon.ico")

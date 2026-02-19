@@ -16,17 +16,24 @@ from hand_gesture_classifier import check_gesture
 # Load models & assets
 # ---------------------------------------------------------------------------
 
-# Face Emotion Model (ONNX)
-EMOTION_ONNX = "emotion_model.onnx"
+# Face Emotion Model (ONNX) — load first available from FER_models/models/
+FER_MODELS_DIR = os.path.join(os.path.dirname(__file__), "..", "FER_models", "models")
 emotion_labels = ["Angry", "Disgust", "Fear", "Happy", "Sad", "Surprise", "Neutral"]
-try:
-    emotion_session = ort.InferenceSession(EMOTION_ONNX, providers=["CPUExecutionProvider"])
-    emotion_input_name = emotion_session.get_inputs()[0].name
-    print("✓ Emotion model (ONNX) loaded.")
-except Exception as e:
-    emotion_session = None
-    emotion_input_name = None
-    print(f"Emotion model not loaded ({e}). Run export_emotion_to_onnx.py once to create {EMOTION_ONNX}")
+emotion_session = None
+emotion_input_name = None
+if os.path.isdir(FER_MODELS_DIR):
+    for f in sorted(os.listdir(FER_MODELS_DIR)):
+        if f.endswith(".onnx"):
+            path = os.path.abspath(os.path.join(FER_MODELS_DIR, f))
+            try:
+                emotion_session = ort.InferenceSession(path, providers=["CPUExecutionProvider"])
+                emotion_input_name = emotion_session.get_inputs()[0].name
+                print(f"✓ Emotion model loaded: {f}")
+                break
+            except Exception as e:
+                pass
+if emotion_session is None:
+    print("No emotion model loaded. Place .onnx models in FER_models/models/ (see README).")
 
 # Face Detection (Haar Cascade)
 try:

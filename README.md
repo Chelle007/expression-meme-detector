@@ -7,7 +7,7 @@ A facial expression and meme detection system that uses deep learning to classif
 - **Emotion detection** — Classifies faces into 7 emotions: Angry, Disgust, Fear, Happy, Sad, Surprise, Neutral
 - **Face detection** — Uses OpenCV Haar Cascade for face localisation
 - **Hand gesture detection** — MediaPipe for hand landmark detection
-- **Pre-trained model** — Emotion classification via ONNX (choose from `FER_models/models/` or `emotion_model.onnx`)
+- **Pre-trained model** — Emotion classification via ONNX (models in `FER_models/models/`)
 
 ## Requirements
 
@@ -102,7 +102,7 @@ expression-meme-detector/
 │   └── index.html             # Web UI (webcam, emotion bars, meme)
 ├── main.py                    # CLI webcam app
 ├── hand_gesture_classifier.py # Hand gesture logic
-├── emotion_model.onnx        # Pre-trained emotion model (or in models/)
+├── FER_models/models/        # Pre-trained emotion models (.onnx)
 ├── monkey_memes/             # Meme images
 ├── requirements.txt          # Dependencies (opencv, mediapipe, onnxruntime, flask)
 └── README.md
@@ -119,11 +119,11 @@ expression-meme-detector/
 
 The app uses **ONNX Runtime** for emotion inference. Install with `pip install -r requirements.txt`.
 
-### Why only some emotion models load (e.g. only `emotion_model.onnx`)
+### Why only some emotion models load
 
 Models in `FER_models/models/` are discovered automatically, but only models that **load successfully** appear in the dropdown. Common reasons others fail:
 
-1. **Missing external data** — Larger ONNX models (e.g. ResNet, EfficientNet) are often exported with weights in a separate `.onnx.data` file. If that file is not in `FER_models/models/` next to the `.onnx`, loading fails with a "file_size: No such file or directory [*.onnx.data]" error. **Fix:** Add the matching `.onnx.data` file next to the `.onnx`, or use a model that is stored in a single file (e.g. `emotion_model.onnx` or a smaller FER model).
-2. **Input shape** — The app currently feeds a fixed 64×64 grayscale face crop. If a model was trained with a different size (e.g. 48×48) or layout, inference may fail at runtime even if the session loads; the dropdown only hides models that fail at **load** time (e.g. missing `.onnx.data`).
+1. **Missing external data** — Larger ONNX models (e.g. ResNet, EfficientNet) are often exported with weights in a separate `.onnx.data` file. If that file is not in `FER_models/models/` next to the `.onnx`, loading fails with a "file_size: No such file or directory [*.onnx.data]" error. **Fix:** Add the matching `.onnx.data` file next to the `.onnx`, or use a model that is stored in a single file.
+2. **Input shape** — Models in `FER_models/models/` expect the input shape they were trained with (e.g. 224×224 RGB with ImageNet normalization). The dropdown only hides models that fail at **load** time (e.g. missing `.onnx.data`).
 
 When you run `python app.py`, the console prints which models loaded and, for each failure, a short reason (e.g. "Uses external data (missing .onnx.data file)").

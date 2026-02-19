@@ -21,8 +21,6 @@ app = Flask(__name__, static_folder="static", static_url_path="")
 
 # Canonical emotion order used by API and frontend (same as ipynb EMOTION_LABELS)
 EMOTION_LABELS = ["Surprise", "Fear", "Disgust", "Happiness", "Sadness", "Anger", "Neutral"]
-# Legacy 64x64 grayscale model (emotion_model.onnx) output order — map to EMOTION_LABELS when used
-LEGACY_EMOTION_ORDER = ["Angry", "Disgust", "Fear", "Happy", "Sad", "Surprise", "Neutral"]
 # FER notebooks use ImageFolder; .classes is alphabetical: Anger, Disgust, Fear, Happiness, Neutral, Sadness, Surprise
 # So model output index i maps to canonical index FER_IMAGEFOLDER_TO_CANONICAL[i]
 FER_IMAGEFOLDER_ORDER = ["Anger", "Disgust", "Fear", "Happiness", "Neutral", "Sadness", "Surprise"]
@@ -63,16 +61,7 @@ def _get_emotion_session(model_filename):
     global _default_model
     if model_filename in _emotion_sessions:
         return _emotion_sessions[model_filename]
-    # emotion_model.onnx: use same path order as original app (root, then models/, then FER_models/models/)
-    if model_filename == "emotion_model.onnx":
-        for candidate in ["emotion_model.onnx", os.path.join("models", "emotion_model.onnx"), os.path.join(FER_MODELS_DIR, model_filename)]:
-            if os.path.exists(candidate):
-                path = candidate
-                break
-        else:
-            path = os.path.join(FER_MODELS_DIR, model_filename)
-    else:
-        path = os.path.join(FER_MODELS_DIR, model_filename)
+    path = os.path.join(FER_MODELS_DIR, model_filename)
     if not os.path.exists(path):
         print(f"Emotion model {model_filename} not found at {path}")
         return (None, None, None)
@@ -125,13 +114,6 @@ for name in _available:
     session, _, _ = _get_emotion_session(name)
     if session is not None:
         _loadable_at_startup.append(name)
-if not _loadable_at_startup:
-    for legacy in ["emotion_model.onnx", os.path.join("models", "emotion_model.onnx")]:
-        if os.path.exists(legacy):
-            _get_emotion_session("emotion_model.onnx")
-            _default_model = "emotion_model.onnx"
-            _loadable_at_startup = ["emotion_model.onnx"]
-            break
 if _loadable_at_startup:
     print("✓ Loadable emotion model(s):", ", ".join(_loadable_at_startup))
 else:
@@ -250,8 +232,6 @@ def process_frame(frame_rgb, model_filename=None):
     face_bbox = None
     emotion_probs = {label: 0.0 for label in EMOTION_LABELS}
     emotion_probs["Neutral"] = 1.0
-    # Legacy model index -> canonical EMOTION_LABELS index (Surprise, Fear, Disgust, Happiness, Sadness, Anger, Neutral)
-    legacy_to_canonical = (5, 2, 1, 4, 3, 0, 6)  # Surprise, Fear, Disgust, Happiness, Sadness, Anger, Neutral
 
     emotion_session, emotion_input_name, input_spec = (None, None, None)
     if model_filename:
@@ -265,17 +245,10 @@ def process_frame(frame_rgb, model_filename=None):
         if emotion_session and emotion_input_name and input_spec:
             try:
                 current_model = model_filename if model_filename else _default_model
-                use_legacy_emotion_model = (current_model == "emotion_model.onnx")
                 ch = input_spec["channels"]
                 model_h, model_w = input_spec["height"], input_spec["width"]
                 layout = input_spec["layout"]
-                if use_legacy_emotion_model:
-                    # emotion_model.onnx: original preprocessing — direct face rect, 64x64 grayscale, no square crop
-                    roi = gray[fy : fy + fh, fx : fx + fw]
-                    roi = cv2.resize(roi, (64, 64))
-                    roi = roi.astype(np.float32) / 255.0
-                    roi = np.expand_dims(roi, axis=(0, -1))  # (1, 64, 64, 1)
-                elif ch == 3:
+                if ch == 3:
                     # FER RGB: square face crop then resize to model size (224,224), ImageNet normalize, NCHW
                     roi = _square_face_crop(frame_rgb, fx, fy, fw, fh)
                     roi = cv2.resize(roi, (model_w, model_h))
@@ -296,11 +269,7 @@ def process_frame(frame_rgb, model_filename=None):
                     None, {emotion_input_name: roi}
                 )[0][0]
                 probs = softmax(logits)
-                if use_legacy_emotion_model:
-                    # Legacy model outputs LEGACY_EMOTION_ORDER; map to canonical EMOTION_LABELS
-                    emotion_probs = {EMOTION_LABELS[legacy_to_canonical[i]]: float(probs[i]) for i in range(len(probs))}
-                    current_emotion = EMOTION_LABELS[legacy_to_canonical[int(np.argmax(probs))]]
-                elif current_model in FER_MODELS_IMAGEFOLDER_ORDER:
+                if current_model in FER_MODELS_IMAGEFOLDER_ORDER:
                     # FER models trained with ImageFolder: output order is alphabetical (Anger, Disgust, Fear, Happiness, Neutral, Sadness, Surprise)
                     # Map to canonical order to match ipynb EMOTION_LABELS
                     emotion_probs = {EMOTION_LABELS[FER_IMAGEFOLDER_TO_CANONICAL[i]]: float(probs[i]) for i in range(len(probs))}
@@ -367,11 +336,6 @@ def favicon():
 def list_models():
     """Return list of emotion model filenames that actually load (skips models missing .onnx.data etc.)."""
     all_models = _get_available_models()
-    # Include legacy emotion_model.onnx from root or models/ so it appears in dropdown and loads from original path
-    if "emotion_model.onnx" not in all_models and (
-        os.path.exists("emotion_model.onnx") or os.path.exists(os.path.join("models", "emotion_model.onnx"))
-    ):
-        all_models = ["emotion_model.onnx"] + all_models
     loadable = []
     for name in all_models:
         session, _, _ = _get_emotion_session(name)

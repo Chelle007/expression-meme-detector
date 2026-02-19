@@ -854,6 +854,10 @@
 
     async function startWebcam() {
       try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          webcamStatus.textContent = 'Camera requires a secure context. Open this app at http://127.0.0.1:5001 on this computer, or use HTTPS.';
+          return;
+        }
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
         video.srcObject = stream;
         await video.play();

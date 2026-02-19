@@ -19,7 +19,10 @@ app = Flask(__name__, static_folder="static", static_url_path="")
 # Load models & assets
 # ---------------------------------------------------------------------------
 
+# Legacy 64x64 grayscale model (e.g. emotion_model.onnx) output order
 EMOTION_LABELS = ["Angry", "Disgust", "Fear", "Happy", "Sad", "Surprise", "Neutral"]
+# FER notebook models (224x224 RGB) output order: Surprise, Fear, Disgust, Happiness, Sadness, Anger, Neutral
+FER_EMOTION_LABELS = ["Surprise", "Fear", "Disgust", "Happy", "Sad", "Angry", "Neutral"]
 
 # Emotion models from FER_models/models (lazy-loaded by filename)
 FER_MODELS_DIR = os.path.join("FER_models", "models")
@@ -46,12 +49,16 @@ def _get_emotion_session(model_filename):
     global _default_model
     if model_filename in _emotion_sessions:
         return _emotion_sessions[model_filename]
-    path = os.path.join(FER_MODELS_DIR, model_filename)
-    if not os.path.exists(path) and model_filename == "emotion_model.onnx":
-        for fallback in ["emotion_model.onnx", os.path.join("models", "emotion_model.onnx")]:
-            if os.path.exists(fallback):
-                path = fallback
+    # emotion_model.onnx: use same path order as original app (root, then models/, then FER_models/models/)
+    if model_filename == "emotion_model.onnx":
+        for candidate in ["emotion_model.onnx", os.path.join("models", "emotion_model.onnx"), os.path.join(FER_MODELS_DIR, model_filename)]:
+            if os.path.exists(candidate):
+                path = candidate
                 break
+        else:
+            path = os.path.join(FER_MODELS_DIR, model_filename)
+    else:
+        path = os.path.join(FER_MODELS_DIR, model_filename)
     if not os.path.exists(path):
         print(f"Emotion model {model_filename} not found at {path}")
         return (None, None, None)
@@ -196,6 +203,26 @@ def softmax(x):
     return e / e.sum()
 
 
+def _square_face_crop(img, x, y, w, h, pad_value=0):
+    """Crop a square region centered on the face, with padding if out of bounds. Returns (side, side) array."""
+    side = max(w, h)
+    cx, cy = x + w // 2, y + h // 2
+    x1 = int(cx - side // 2)
+    y1 = int(cy - side // 2)
+    H, W = img.shape[:2]
+    canvas = np.full((side, side) + img.shape[2:], pad_value, dtype=img.dtype)
+    src_x1 = max(0, x1)
+    src_x2 = min(W, x1 + side)
+    src_y1 = max(0, y1)
+    src_y2 = min(H, y1 + side)
+    dst_x1 = src_x1 - x1
+    dst_x2 = dst_x1 + (src_x2 - src_x1)
+    dst_y1 = src_y1 - y1
+    dst_y2 = dst_y1 + (src_y2 - src_y1)
+    canvas[dst_y1:dst_y2, dst_x1:dst_x2] = img[src_y1:src_y2, src_x1:src_x2]
+    return canvas
+
+
 def process_frame(frame_bgr, model_filename=None):
     """Run face + emotion + hand + meme pipeline. Returns dict for JSON.
     model_filename: optional .onnx filename from FER_models/models; uses default if omitted.
@@ -221,11 +248,19 @@ def process_frame(frame_bgr, model_filename=None):
         face_bbox = (x, y, w, h)
         if emotion_session and emotion_input_name and input_spec:
             try:
+                current_model = model_filename if model_filename else _default_model
+                use_legacy_emotion_model = (current_model == "emotion_model.onnx")
                 ch, h, w = input_spec["channels"], input_spec["height"], input_spec["width"]
                 layout = input_spec["layout"]
-                if ch == 3:
-                    # RGB: crop from BGR frame, resize, ImageNet normalize, NCHW
-                    roi = frame_bgr[y : y + h, x : x + w]
+                if use_legacy_emotion_model:
+                    # emotion_model.onnx: original preprocessing — direct face rect, 64x64 grayscale, no square crop
+                    roi = gray[y : y + h, x : x + w]
+                    roi = cv2.resize(roi, (64, 64))
+                    roi = roi.astype(np.float32) / 255.0
+                    roi = np.expand_dims(roi, axis=(0, -1))  # (1, 64, 64, 1)
+                elif ch == 3:
+                    # FER RGB: square crop (match ipynb Resize(224,224) without stretching), ImageNet normalize, NCHW
+                    roi = _square_face_crop(frame_bgr, x, y, w, h)
                     roi = cv2.cvtColor(roi, cv2.COLOR_BGR2RGB)
                     roi = cv2.resize(roi, (w, h))
                     roi = roi.astype(np.float32) / 255.0
@@ -233,8 +268,8 @@ def process_frame(frame_bgr, model_filename=None):
                     roi = np.transpose(roi, (2, 0, 1))  # HWC -> CHW
                     roi = np.expand_dims(roi, axis=0).astype(np.float32)  # (1, 3, H, W)
                 else:
-                    # Grayscale
-                    roi = gray[y : y + h, x : x + w]
+                    # Other grayscale models: square crop then resize
+                    roi = _square_face_crop(gray, x, y, w, h)
                     roi = cv2.resize(roi, (w, h))
                     roi = roi.astype(np.float32) / 255.0
                     if layout == "nchw":
@@ -245,8 +280,10 @@ def process_frame(frame_bgr, model_filename=None):
                     None, {emotion_input_name: roi}
                 )[0][0]
                 probs = softmax(logits)
-                current_emotion = EMOTION_LABELS[int(np.argmax(probs))]
-                emotion_probs = {EMOTION_LABELS[i]: float(probs[i]) for i in range(len(EMOTION_LABELS))}
+                # FER models use order Surprise, Fear, Disgust, Happiness, Sadness, Anger, Neutral
+                labels = FER_EMOTION_LABELS if ch == 3 else EMOTION_LABELS
+                current_emotion = labels[int(np.argmax(probs))]
+                emotion_probs = {labels[i]: float(probs[i]) for i in range(len(labels))}
             except Exception:
                 pass
 
@@ -292,10 +329,21 @@ def index():
     return send_from_directory("static", "index.html")
 
 
+@app.route("/favicon.ico")
+def favicon():
+    """Avoid 404 when browser requests favicon."""
+    return "", 204
+
+
 @app.route("/api/models", methods=["GET"])
 def list_models():
     """Return list of emotion model filenames that actually load (skips models missing .onnx.data etc.)."""
     all_models = _get_available_models()
+    # Include legacy emotion_model.onnx from root or models/ so it appears in dropdown and loads from original path
+    if "emotion_model.onnx" not in all_models and (
+        os.path.exists("emotion_model.onnx") or os.path.exists(os.path.join("models", "emotion_model.onnx"))
+    ):
+        all_models = ["emotion_model.onnx"] + all_models
     loadable = []
     for name in all_models:
         session, _, _ = _get_emotion_session(name)

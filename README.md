@@ -4,7 +4,7 @@ A facial expression and meme detection system that uses deep learning to classif
 
 ## Features
 
-- **Emotion detection** — Classifies faces into 7 emotions: Angry, Disgust, Fear, Happy, Sad, Surprise, Neutral
+- **Emotion detection** — Classifies faces into 7 emotions: Surprise, Fear, Disgust, Happiness, Sadness, Anger, Neutral
 - **Face detection** — Uses OpenCV Haar Cascade for face localisation
 - **Hand gesture detection** — MediaPipe for hand landmark detection
 - **Pre-trained model** — Emotion classification via ONNX (models in `FER_models/models/`)
@@ -78,8 +78,9 @@ deactivate
 
 ### Web app (recommended)
 
+From the project root (after [Setup](#setup)):
+
 ```bash
-pip install -r requirements.txt
 python app.py
 ```
 
@@ -87,8 +88,10 @@ Open **http://127.0.0.1:5001** in your browser. Allow camera access to see the w
 
 ### CLI webcam app
 
+A standalone webcam CLI is available in the archive:
+
 ```bash
-python main.py
+python archive/main.py
 ```
 
 Press **q** to quit.
@@ -97,16 +100,24 @@ Press **q** to quit.
 
 ```
 expression-meme-detector/
-├── app.py                     # Web app (Flask)
+├── app.py                        # Web app (Flask)
 ├── static/
-│   └── index.html             # Web UI (webcam, emotion bars, meme)
-├── main.py                    # CLI webcam app
-├── hand_gesture_classifier.py # Hand gesture logic
-├── FER_models/models/        # Pre-trained emotion models (.onnx)
-├── monkey_memes/             # Meme images
-├── requirements.txt          # Dependencies (opencv, mediapipe, onnxruntime, flask)
+│   ├── index.html                # Web UI (webcam, emotion bars, meme)
+│   ├── index_v2.html             # Alternate UI
+│   └── index_v3.html             # Alternate UI
+├── archive/
+│   └── main.py                   # CLI webcam app
+├── hand_gesture_classifier.py    # Hand gesture logic
+├── FER_models/
+│   ├── models/                   # Pre-trained emotion models (.onnx)
+│   └── archive_model_files/      # Archived model copies by architecture
+├── CSCI218_FT02_NOTEBOOK/        # Training notebooks (Custom CNN, ResNet18, MobileNetV2, EfficientNet-B0)
+├── monkey_memes/                 # Meme images (if present)
+├── requirements.txt              # Dependencies (opencv, mediapipe, onnxruntime, flask)
 └── README.md
 ```
+
+Training notebooks and dataset details are documented in **[CSCI218_FT02_NOTEBOOK/README.md](CSCI218_FT02_NOTEBOOK/README.md)**.
 
 ## Troubleshooting
 
@@ -118,12 +129,3 @@ expression-meme-detector/
 ### Dependency conflicts
 
 The app uses **ONNX Runtime** for emotion inference. Install with `pip install -r requirements.txt`.
-
-### Why only some emotion models load
-
-Models in `FER_models/models/` are discovered automatically, but only models that **load successfully** appear in the dropdown. Common reasons others fail:
-
-1. **Missing external data** — Larger ONNX models (e.g. ResNet, EfficientNet) are often exported with weights in a separate `.onnx.data` file. If that file is not in `FER_models/models/` next to the `.onnx`, loading fails with a "file_size: No such file or directory [*.onnx.data]" error. **Fix:** Add the matching `.onnx.data` file next to the `.onnx`, or use a model that is stored in a single file.
-2. **Input shape** — Models in `FER_models/models/` expect the input shape they were trained with (e.g. 224×224 RGB with ImageNet normalization). The dropdown only hides models that fail at **load** time (e.g. missing `.onnx.data`).
-
-When you run `python app.py`, the console prints which models loaded and, for each failure, a short reason (e.g. "Uses external data (missing .onnx.data file)").
